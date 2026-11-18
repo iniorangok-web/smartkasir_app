@@ -5,6 +5,7 @@ import 'package:path/path.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 
 import '../models/produk.dart';
+import '../models/karyawan.dart';
 
 // Kelas pengelola koneksi dan operasi database SQLite SmartKasir
 class DatabaseHelper {
@@ -32,8 +33,9 @@ class DatabaseHelper {
 
       return await openDatabase(
         filePath,
-        version: 1,
+        version: 2,
         onCreate: _createDB,
+        onUpgrade: _onUpgradeDB,
       );
     } else {
       // Jalur database untuk Android
@@ -42,14 +44,16 @@ class DatabaseHelper {
 
       return await openDatabase(
         pathDB,
-        version: 1,
+        version: 2,
         onCreate: _createDB,
+        onUpgrade: _onUpgradeDB,
       );
     }
   }
 
   // --- 4. PEMBUATAN TABEL DAN DATA AWAL ---
   Future<void> _createDB(Database db, int version) async {
+    // 1. Pembuatan Tabel Produk
     await db.execute('''
       CREATE TABLE produk (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,7 +80,94 @@ class DatabaseHelper {
     }
 
     await batch.commit(noResult: true);
+
+    // 2. Pembuatan Tabel Karyawan
+    await db.execute('''
+      CREATE TABLE karyawan (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nama_karyawan TEXT NOT NULL,
+        pin TEXT NOT NULL,
+        peran TEXT NOT NULL
+      )
+    ''');
+
+    // 3. Memasukkan data staf awal otomatis (Seeding Data Awal Toko)
+    await db.rawInsert('''
+      INSERT INTO karyawan (nama_karyawan, pin, peran)
+      VALUES ('Ahmad Kasir', '1234', 'Kasir')
+    ''');
+    await db.rawInsert('''
+      INSERT INTO karyawan (nama_karyawan, pin, peran)
+      VALUES ('Siti Supervisor', '8888', 'Manajer')
+    ''');
   }
+
+  // DDL: Migrasi Skema jika versi basis data ditingkatkan
+  Future<void> _onUpgradeDB(
+    Database db,
+    int oldVersion,
+    int newVersion,
+  ) async {
+    if (oldVersion < 2) {
+      // Membuat tabel karyawan untuk database pengguna yang sudah ada
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS karyawan (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          nama_karyawan TEXT NOT NULL,
+          pin TEXT NOT NULL,
+          peran TEXT NOT NULL
+        )
+      ''');
+
+      // Memasukkan staf awal jika tabel baru dibuat
+      await db.rawInsert('''
+        INSERT INTO karyawan (nama_karyawan, pin, peran)
+        VALUES ('Ahmad Kasir', '1234', 'Kasir')
+      ''');
+    }
+  }
+
+  // ==========================================
+  // METODE CRUD: TABEL KARYAWAN
+  // ==========================================
+
+  // 1. CREATE: Menyimpan Karyawan Baru
+  Future<int> insertKaryawan(Karyawan karyawan) async {
+    final db = await instance.database;
+    return await db.insert('karyawan', karyawan.toMap());
+  }
+
+  // 2. READ: Mengambil Seluruh Karyawan
+  Future<List<Karyawan>> getAllKaryawan() async {
+    final db = await instance.database;
+    final result = await db.query('karyawan', orderBy: 'id ASC');
+    return result.map((json) => Karyawan.fromMap(json)).toList();
+  }
+
+  // 3. UPDATE: Memperbarui Data Karyawan
+  Future<int> updateKaryawan(Karyawan karyawan) async {
+    final db = await instance.database;
+    return await db.update(
+      'karyawan',
+      karyawan.toMap(),
+      where: 'id = ?',
+      whereArgs: [karyawan.id],
+    );
+  }
+
+  // 4. DELETE: Menghapus Karyawan Berdasarkan ID
+  Future<int> deleteKaryawan(int id) async {
+    final db = await instance.database;
+    return await db.delete(
+      'karyawan',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // ==========================================
+  // METODE CRUD: TABEL PRODUK (DARI MINGGU 11)
+  // ==========================================
 
   // --- 5. CREATE: MENAMBAHKAN PRODUK ---
   Future<int> insertProduk(Produk produk) async {
